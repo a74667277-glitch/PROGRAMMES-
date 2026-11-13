@@ -1,0 +1,258 @@
+/*
+ * Bank Account Management System (Mini Project)
+ * ---------------------------------------------
+ * Functions : Create Account, Deposit, Withdraw, Balance Enquiry, Exit
+ * Concepts  : Structures, functions, binary file handling
+ * Data file : accounts.dat (accounts persist between runs)
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define DATA_FILE      "accounts.dat"
+#define NAME_LEN       50
+#define MIN_BALANCE    0.0      /* balance can never drop below this */
+#define MAX_PIN_TRIES  3
+
+typedef struct {
+    int    accNo;
+    char   name[NAME_LEN];
+    int    pin;                 /* 4-digit PIN */
+    double balance;
+} Account;
+
+/* ---------------------------- Input helpers ---------------------------- */
+
+static void readLine(char *buf, int size)
+{
+    if (fgets(buf, size, stdin) != NULL)
+        buf[strcspn(buf, "\n")] = '\0';
+    else
+        buf[0] = '\0';
+}
+
+static int readInt(const char *prompt, int min, int max)
+{
+    char buf[64], *end;
+    long v;
+    while (1) {
+        printf("%s", prompt);
+        readLine(buf, sizeof buf);
+        v = strtol(buf, &end, 10);
+        if (end != buf && *end == '\0' && v >= min && v <= max)
+            return (int)v;
+        printf("  Invalid input. Enter a number between %d and %d.\n", min, max);
+    }
+}
+
+static double readAmount(const char *prompt)
+{
+    char buf[64], *end;
+    double v;
+    while (1) {
+        printf("%s", prompt);
+        readLine(buf, sizeof buf);
+        v = strtod(buf, &end);
+        if (end != buf && *end == '\0' && v > 0.0 && v <= 1000000000.0)
+            return v;
+        printf("  Invalid amount. Enter a positive number.\n");
+    }
+}
+
+/* ---------------------------- File helpers ----------------------------- */
+
+/* Finds an account by number. On success returns 1 and fills *acc.
+ * If pos is not NULL it receives the record's byte offset in the file. */
+static int findAccount(int accNo, Account *acc, long *pos)
+{
+    FILE *fp = fopen(DATA_FILE, "rb");
+    Account a;
+
+    if (fp == NULL) return 0;
+    while (1) {
+        long here = ftell(fp);
+        if (fread(&a, sizeof a, 1, fp) != 1) break;
+        if (a.accNo == accNo) {
+            if (acc) *acc = a;
+            if (pos) *pos = here;
+            fclose(fp);
+            return 1;
+        }
+    }
+    fclose(fp);
+    return 0;
+}
+
+/* Overwrites the record stored at byte offset pos. */
+static int saveAccountAt(long pos, const Account *acc)
+{
+    FILE *fp = fopen(DATA_FILE, "rb+");
+    int ok;
+
+    if (fp == NULL) return 0;
+    fseek(fp, pos, SEEK_SET);
+    ok = (fwrite(acc, sizeof *acc, 1, fp) == 1);
+    fclose(fp);
+    return ok;
+}
+
+static int nextAccountNumber(void)
+{
+    FILE *fp = fopen(DATA_FILE, "rb");
+    Account a;
+    int max = 1000;             /* first account will be 1001 */
+
+    if (fp == NULL) return max + 1;
+    while (fread(&a, sizeof a, 1, fp) == 1)
+        if (a.accNo > max) max = a.accNo;
+    fclose(fp);
+    return max + 1;
+}
+
+/* ------------------------- Authentication step ------------------------- */
+
+/* Asks for account number + PIN. Returns 1 and fills acc/pos on success. */
+static int login(Account *acc, long *pos)
+{
+    int accNo = readInt("Enter account number: ", 1, 2000000000);
+    int tries;
+
+    if (!findAccount(accNo, acc, pos)) {
+        printf("Account %d not found.\n", accNo);
+        return 0;
+    }
+    for (tries = 1; tries <= MAX_PIN_TRIES; tries++) {
+        int pin = readInt("Enter 4-digit PIN   : ", 0, 9999);
+        if (pin == acc->pin) return 1;
+        printf("Incorrect PIN (%d/%d).\n", tries, MAX_PIN_TRIES);
+    }
+    printf("Too many wrong attempts. Returning to menu.\n");
+    return 0;
+}
+
+/* ------------------------------ Operations ----------------------------- */
+
+static void createAccount(void)
+{
+    Account a;
+    FILE *fp;
+
+    printf("\n--- Create New Account ---\n");
+    do {
+        printf("Account holder name: ");
+        readLine(a.name, NAME_LEN);
+    } while (a.name[0] == '\0');
+
+    a.pin = readInt("Set a 4-digit PIN   : ", 0, 9999);
+    a.balance = 0.0;
+    a.accNo = nextAccountNumber();
+
+    {
+        char buf[64];
+        printf("Opening deposit (Enter for 0): ");
+        readLine(buf, sizeof buf);
+        if (buf[0] != '\0') {
+            char *end;
+            double v = strtod(buf, &end);
+            if (*end == '\0' && v > 0.0)
+                a.balance = v;
+            else
+                printf("  Invalid amount, starting with 0.\n");
+        }
+    }
+
+    fp = fopen(DATA_FILE, "ab");
+    if (fp == NULL) {
+        perror("Unable to open data file");
+        return;
+    }
+    if (fwrite(&a, sizeof a, 1, fp) == 1)
+        printf("Account created. Your account number is %d\n", a.accNo);
+    else
+        printf("Error saving account.\n");
+    fclose(fp);
+}
+
+static void deposit(void)
+{
+    Account a;
+    long pos;
+    double amt;
+
+    printf("\n--- Deposit ---\n");
+    if (!login(&a, &pos)) return;
+
+    amt = readAmount("Amount to deposit: ");
+    a.balance += amt;
+
+    if (saveAccountAt(pos, &a))
+        printf("Deposited %.2f. New balance: %.2f\n", amt, a.balance);
+    else
+        printf("Error: could not save the transaction.\n");
+}
+
+static void withdraw(void)
+{
+    Account a;
+    long pos;
+    double amt;
+
+    printf("\n--- Withdraw ---\n");
+    if (!login(&a, &pos)) return;
+
+    amt = readAmount("Amount to withdraw: ");
+    if (a.balance - amt < MIN_BALANCE) {
+        printf("Insufficient funds. Available balance: %.2f\n", a.balance);
+        return;
+    }
+    a.balance -= amt;
+
+    if (saveAccountAt(pos, &a))
+        printf("Withdrew %.2f. New balance: %.2f\n", amt, a.balance);
+    else
+        printf("Error: could not save the transaction.\n");
+}
+
+static void balanceEnquiry(void)
+{
+    Account a;
+    long pos;
+
+    printf("\n--- Balance Enquiry ---\n");
+    if (!login(&a, &pos)) return;
+
+    printf("\nAccount No : %d\n", a.accNo);
+    printf("Holder     : %s\n", a.name);
+    printf("Balance    : %.2f\n", a.balance);
+}
+
+/* -------------------------------- Main --------------------------------- */
+
+int main(void)
+{
+    int choice;
+
+    do {
+        printf("\n=========================================\n");
+        printf("        BANK ACCOUNT MANAGEMENT\n");
+        printf("=========================================\n");
+        printf("  1. Create Account\n");
+        printf("  2. Deposit\n");
+        printf("  3. Withdraw\n");
+        printf("  4. Balance Enquiry\n");
+        printf("  5. Exit\n");
+        printf("-----------------------------------------\n");
+        choice = readInt("Enter your choice: ", 1, 5);
+
+        switch (choice) {
+            case 1: createAccount();   break;
+            case 2: deposit();         break;
+            case 3: withdraw();        break;
+            case 4: balanceEnquiry();  break;
+            case 5: printf("\nThank you for banking with us. Goodbye!\n"); break;
+        }
+    } while (choice != 5);
+
+    return 0;
+}
