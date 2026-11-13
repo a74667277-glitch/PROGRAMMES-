@@ -1,0 +1,100 @@
+#include <stdio.h>
+
+void readMat(int m[10][10], int r, int c) {
+    for (int i = 0; i < r; i++) {
+        for (int j = 0; j < c; j++) {
+            scanf("%d", &m[i][j]);
+        }
+    }
+}
+
+void printMat(int m[10][10], int r, int c) {
+    for (int i = 0; i < r; i++) {
+        for (int j = 0; j < c; j++) {
+            printf("%d\t", m[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void add(int a[10][10], int b[10][10], int r, int c) {
+    int sum[10][10];
+    for (int i = 0; i < r; i++) {
+        for (int j = 0; j < c; j++) {
+            sum[i][j] = a[i][j] + b[i][j];
+        }
+    }
+    printf("\nAddition Result:\n");
+    printMat(sum, r, c);
+}
+
+void multiply(int a[10][10], int b[10][10], int r1, int c1, int c2) {
+    int mul[10][10];
+    for (int i = 0; i < r1; i++) {
+        for (int j = 0; j < c2; j++) {
+            mul[i][j] = 0;
+            for (int k = 0; k < c1; k++) {
+                mul[i][j] += a[i][k] * b[k][j];
+            }
+        }
+    }
+    printf("\nMultiplication Result:\n");
+    printMat(mul, r1, c2);
+}
+
+void transpose(int a[10][10], int r, int c) {
+    int trans[10][10];
+    for (int i = 0; i < r; i++) {
+        for (int j = 0; j < c; j++) {
+            trans[j][i] = a[i][j];
+        }
+    }
+    printf("\nTranspose Result:\n");
+    printMat(trans, c, r);
+}
+
+int main() {
+    int a[10][10], b[10][10];
+    int r1, c1, r2, c2, ch;
+
+    printf("1. Addition\n2. Multiplication\n3. Transpose\nEnter choice: ");
+    scanf("%d", &ch);
+
+    if (ch == 1) {
+        printf("Enter rows and cols: ");
+        scanf("%d %d", &r1, &c1);
+        printf("Enter Matrix A:\n");
+        readMat(a, r1, c1);
+        printf("Enter Matrix B:\n");
+        readMat(b, r1, c1);
+        add(a, b, r1, c1);
+    } 
+    else if (ch == 2) {
+        printf("Enter rows and cols for A: ");
+        scanf("%d %d", &r1, &c1);
+        printf("Enter rows and cols for B: ");
+        scanf("%d %d", &r2, &c2);
+
+        if (c1 == r2) {
+            printf("Enter Matrix A:\n");
+            readMat(a, r1, c1);
+            printf("Enter Matrix B:\n");
+            readMat(b, r2, c2);
+            multiply(a, b, r1, c1, c2);
+        } else {
+            printf("Cannot multiply! c1 must equal r2.\n");
+        }
+    } 
+    else if (ch == 3) {
+        printf("Enter rows and cols: ");
+        scanf("%d %d", &r1, &c1);
+        printf("Enter Matrix:\n");
+        readMat(a, r1, c1);
+        transpose(a, r1, c1);
+    } 
+    else {
+        printf("Invalid choice\n");
+    }
+
+    return 0;
+}
